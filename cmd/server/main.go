@@ -21,8 +21,12 @@ func main() {
 		log.Fatal("Error parsing templates:", err)
 	}
 
-	// Initialize store
-	store := models.NewTodoStore()
+	// Initialize store with SQLite database
+	store, err := models.NewTodoStore("todos.db")
+	if err != nil {
+		log.Fatal("Error initializing database:", err)
+	}
+	defer store.Close()
 
 	// Setup routes
 	mux := router.SetupRoutes(store, templates)
