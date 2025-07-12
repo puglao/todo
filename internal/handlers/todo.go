@@ -21,7 +21,12 @@ func NewTodoHandler(store *models.TodoStore, templates *template.Template) *Todo
 }
 
 func (h *TodoHandler) IndexHandler(w http.ResponseWriter, r *http.Request) {
-	todos := h.store.GetTodos()
+	todos, err := h.store.GetTodos()
+	if err != nil {
+		http.Error(w, "Error retrieving todos", http.StatusInternalServerError)
+		return
+	}
+
 	data := struct {
 		Todos []models.Todo
 	}{
@@ -35,7 +40,12 @@ func (h *TodoHandler) IndexHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *TodoHandler) TodosHandler(w http.ResponseWriter, r *http.Request) {
-	todos := h.store.GetTodos()
+	todos, err := h.store.GetTodos()
+	if err != nil {
+		http.Error(w, "Error retrieving todos", http.StatusInternalServerError)
+		return
+	}
+
 	data := struct {
 		Todos []models.Todo
 	}{
@@ -55,14 +65,19 @@ func (h *TodoHandler) AddTodoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	text := r.FormValue("text")
-	if text == "" {
-		http.Error(w, "Todo text is required", http.StatusBadRequest)
+	// Validation is now handled in the store layer
+	_, err := h.store.AddTodo(text)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	h.store.AddTodo(text)
+	todos, err := h.store.GetTodos()
+	if err != nil {
+		http.Error(w, "Error retrieving todos", http.StatusInternalServerError)
+		return
+	}
 
-	todos := h.store.GetTodos()
 	data := struct {
 		Todos []models.Todo
 	}{
@@ -88,12 +103,22 @@ func (h *TodoHandler) ToggleTodoHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if !h.store.ToggleTodo(id) {
-		http.Error(w, "Todo not found", http.StatusNotFound)
+	err = h.store.ToggleTodo(id)
+	if err != nil {
+		if err.Error() == "todo not found" {
+			http.Error(w, "Todo not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Error updating todo", http.StatusInternalServerError)
+		}
 		return
 	}
 
-	todos := h.store.GetTodos()
+	todos, err := h.store.GetTodos()
+	if err != nil {
+		http.Error(w, "Error retrieving todos", http.StatusInternalServerError)
+		return
+	}
+
 	data := struct {
 		Todos []models.Todo
 	}{
@@ -119,12 +144,22 @@ func (h *TodoHandler) DeleteTodoHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if !h.store.DeleteTodo(id) {
-		http.Error(w, "Todo not found", http.StatusNotFound)
+	err = h.store.DeleteTodo(id)
+	if err != nil {
+		if err.Error() == "todo not found" {
+			http.Error(w, "Todo not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Error deleting todo", http.StatusInternalServerError)
+		}
 		return
 	}
 
-	todos := h.store.GetTodos()
+	todos, err := h.store.GetTodos()
+	if err != nil {
+		http.Error(w, "Error retrieving todos", http.StatusInternalServerError)
+		return
+	}
+
 	data := struct {
 		Todos []models.Todo
 	}{

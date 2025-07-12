@@ -22,7 +22,8 @@ func main() {
 	}
 
 	// Initialize store with SQLite database
-	store, err := models.NewTodoStore("todos.db")
+	// Database path can be configured via DB_PATH environment variable
+	store, err := models.NewTodoStore("")
 	if err != nil {
 		log.Fatal("Error initializing database:", err)
 	}

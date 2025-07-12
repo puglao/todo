@@ -2,7 +2,11 @@ package models
 
 import (
 	"database/sql"
+	"errors"
 	"log"
+	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,10 +26,44 @@ type TodoStore struct {
 }
 
 func NewTodoStore(dbPath string) (*TodoStore, error) {
+	// Use environment variable if dbPath is empty
+	if dbPath == "" {
+		dbPath = os.Getenv("DB_PATH")
+		if dbPath == "" {
+			dbPath = "todos.db" // default fallback
+		}
+	}
+
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, err
 	}
+
+	// Configure connection pool
+	maxOpenConns := 10
+	maxIdleConns := 5
+	connMaxLifetime := time.Hour
+
+	// Allow override via environment variables
+	if env := os.Getenv("DB_MAX_OPEN_CONNS"); env != "" {
+		if val, err := strconv.Atoi(env); err == nil && val > 0 {
+			maxOpenConns = val
+		}
+	}
+	if env := os.Getenv("DB_MAX_IDLE_CONNS"); env != "" {
+		if val, err := strconv.Atoi(env); err == nil && val > 0 {
+			maxIdleConns = val
+		}
+	}
+	if env := os.Getenv("DB_CONN_MAX_LIFETIME"); env != "" {
+		if val, err := time.ParseDuration(env); err == nil && val > 0 {
+			connMaxLifetime = val
+		}
+	}
+
+	db.SetMaxOpenConns(maxOpenConns)
+	db.SetMaxIdleConns(maxIdleConns)
+	db.SetConnMaxLifetime(connMaxLifetime)
 
 	store := &TodoStore{db: db}
 	if err := store.initDB(); err != nil {
@@ -58,7 +96,26 @@ func (ts *TodoStore) Close() error {
 	return ts.db.Close()
 }
 
-func (ts *TodoStore) AddTodo(text string) Todo {
+// validateTodoText validates todo text input
+func validateTodoText(text string) error {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return errors.New("todo text cannot be empty")
+	}
+	if len(text) > 500 {
+		return errors.New("todo text cannot exceed 500 characters")
+	}
+	return nil
+}
+
+func (ts *TodoStore) AddTodo(text string) (Todo, error) {
+	// Validate input
+	if err := validateTodoText(text); err != nil {
+		return Todo{}, err
+	}
+
+	text = strings.TrimSpace(text)
+
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
@@ -68,13 +125,13 @@ func (ts *TodoStore) AddTodo(text string) Todo {
 	result, err := ts.db.Exec(query, text, false, now)
 	if err != nil {
 		log.Printf("Error adding todo: %v", err)
-		return Todo{}
+		return Todo{}, err
 	}
 
 	id, err := result.LastInsertId()
 	if err != nil {
 		log.Printf("Error getting last insert ID: %v", err)
-		return Todo{}
+		return Todo{}, err
 	}
 
 	return Todo{
@@ -82,10 +139,10 @@ func (ts *TodoStore) AddTodo(text string) Todo {
 		Text:      text,
 		Completed: false,
 		CreatedAt: now,
-	}
+	}, nil
 }
 
-func (ts *TodoStore) GetTodos() []Todo {
+func (ts *TodoStore) GetTodos() ([]Todo, error) {
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
 
@@ -93,7 +150,7 @@ func (ts *TodoStore) GetTodos() []Todo {
 	rows, err := ts.db.Query(query)
 	if err != nil {
 		log.Printf("Error querying todos: %v", err)
-		return []Todo{}
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -110,12 +167,17 @@ func (ts *TodoStore) GetTodos() []Todo {
 
 	if err = rows.Err(); err != nil {
 		log.Printf("Error iterating todo rows: %v", err)
+		return nil, err
 	}
 
-	return todos
+	return todos, nil
 }
 
-func (ts *TodoStore) ToggleTodo(id int) bool {
+func (ts *TodoStore) ToggleTodo(id int) error {
+	if id <= 0 {
+		return errors.New("invalid todo ID")
+	}
+
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
@@ -123,19 +185,27 @@ func (ts *TodoStore) ToggleTodo(id int) bool {
 	result, err := ts.db.Exec(query, id)
 	if err != nil {
 		log.Printf("Error toggling todo %d: %v", id, err)
-		return false
+		return err
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
 		log.Printf("Error getting rows affected: %v", err)
-		return false
+		return err
 	}
 
-	return rowsAffected > 0
+	if rowsAffected == 0 {
+		return errors.New("todo not found")
+	}
+
+	return nil
 }
 
-func (ts *TodoStore) DeleteTodo(id int) bool {
+func (ts *TodoStore) DeleteTodo(id int) error {
+	if id <= 0 {
+		return errors.New("invalid todo ID")
+	}
+
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
@@ -143,14 +213,18 @@ func (ts *TodoStore) DeleteTodo(id int) bool {
 	result, err := ts.db.Exec(query, id)
 	if err != nil {
 		log.Printf("Error deleting todo %d: %v", id, err)
-		return false
+		return err
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
 		log.Printf("Error getting rows affected: %v", err)
-		return false
+		return err
 	}
 
-	return rowsAffected > 0
+	if rowsAffected == 0 {
+		return errors.New("todo not found")
+	}
+
+	return nil
 }
