@@ -1,0 +1,59 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Binaries and build artifacts
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+memo
+
+# Dependencies
+vendor/
+node_modules/
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# Backup files
+*.old
+*.backup
+*.bak
+
+# Docker and container files
+.dockerignore
+Dockerfile*
+docker-compose*
+
+# Git
+.git/
+.gitignore
+
+# Documentation (except README)
+*.md
+!README.md
